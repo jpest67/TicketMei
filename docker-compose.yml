@@ -1,0 +1,38 @@
+services:
+  catalog:
+    build: ./catalog
+    ports:
+      - "8001:8001"
+
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      - catalog
+
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:10.3.1
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  k6:
+    image: grafana/k6:0.49.0
+    user: root
+    working_dir: /ci-scripts
+    volumes:
+      - ./k6:/ci-scripts
+    command: run load-test.js
+    depends_on:
+      - api-gateway
+    profiles:
+      - testing
