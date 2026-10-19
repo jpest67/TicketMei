@@ -17,7 +17,7 @@ jobs:
         run: docker compose up -d --build
 
       - name: Esperar que o Gateway responda
-        run: curl --fail --retry 15 --retry-connrefused --retry-delay 2 http://localhost:8000/events
+        run: curl --fail --retry 15 --retry-all-errors --retry-delay 2 http://localhost:8000/events
 
       - name: Executar o teste de carga
         run: docker compose run --rm k6 run --quiet load-test.js
