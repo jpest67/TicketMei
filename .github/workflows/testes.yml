@@ -1,0 +1,23 @@
+name: Testes da Fase 1
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Obter os ficheiros do projeto
+        uses: actions/checkout@v6
+
+      - name: Construir e iniciar os serviços
+        run: docker compose up -d --build
+
+      - name: Esperar que o Gateway responda
+        run: curl --fail --retry 15 --retry-connrefused --retry-delay 2 http://localhost:8000/events
+
+      - name: Executar o teste de carga
+        run: docker compose run --rm k6 run --quiet load-test.js
