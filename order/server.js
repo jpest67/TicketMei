@@ -36,7 +36,7 @@ db.exec(`
   )
 `);
 
-//DATA NOT OK = TRUE    DATA OK = NULL
+//DATA NOT OK = TRUE    DATA OK = NULL  RF2
 function validarCompra(dados) {
   if (!dados) {
     return 'É necessário enviar os dados da compra';
@@ -49,11 +49,11 @@ function validarCompra(dados) {
   if (typeof dados.event_id !== 'string' || dados.event_id.trim() === '') {
     return 'event_id é obrigatório e deve ser texto';
   }
-  //enunciado
+  //enunciado 
   if (!Number.isInteger(dados.quantity) || dados.quantity < 1 || dados.quantity > 4) {
     return 'quantity deve ser um número inteiro entre 1 e 4';
   }
-// REMINDER TO IMPLEMENT "EMAIL CHECKER" LATER - [THIS IS FOR NOTIFICATION]
+// REMINDER TO IMPLEMENT BETTER "EMAIL CHECKER" LATER IF NEEDED - [THIS IS FOR NOTIFICATION]
   if (typeof dados.email !== 'string' || dados.email.trim() === '') {
     return 'email é obrigatório e deve ser texto';
   }
@@ -105,7 +105,7 @@ function guardarCompra(dados, evento) {
 }
 
 
-//publishes purchase to RabbitMQ
+//publishes purchase RabbitMQ
 async function publicarCompra(compra) {
   //connect RabbitMQ
   const rabbitUrl = process.env.RABBITMQ_URL || 'amqp://rabbitmq:5672';
