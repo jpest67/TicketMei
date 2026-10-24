@@ -11,6 +11,15 @@ services:
     depends_on:
       - catalog
 
+  order:
+    build: ./order
+    ports:
+      - "8002:8002"
+    volumes:
+      - order-data:/app/data
+    depends_on:
+      - catalog
+
   prometheus:
     image: prom/prometheus:v2.50.0
     volumes:
@@ -36,3 +45,6 @@ services:
       - api-gateway
     profiles:
       - testing
+
+volumes:
+  order-data:
