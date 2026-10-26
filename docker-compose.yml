@@ -45,6 +45,19 @@ services:
       - api-gateway
     profiles:
       - testing
+  
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  notification:
+    build: ./notification
+    ports:
+      - "8003:8003"
+    depends_on:
+      - rabbitmq
 
 volumes:
   order-data:
