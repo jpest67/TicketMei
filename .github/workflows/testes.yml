@@ -1,4 +1,4 @@
-name: Testes da Fase 1
+name: Testes das Fases 1 e 2
 
 on:
   push:
@@ -14,10 +14,18 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Construir e iniciar os serviços
-        run: docker compose up -d --build
+        run: docker compose up -d --build --wait --wait-timeout 120 #needs to wait for rabbit for rabbit
 
       - name: Esperar que o Gateway responda
         run: curl --fail --retry 15 --retry-all-errors --retry-delay 2 http://localhost:8000/events
 
-      - name: Executar o teste de carga
+      - name: Esperar pelo Order e Notification
+        run: |
+          curl --fail --retry 15 --retry-all-errors --retry-delay 2 http://localhost:8002/metrics
+          curl --fail --retry 15 --retry-all-errors --retry-delay 2 http://localhost:8003/metrics
+
+      - name: Testar a compra e a notificação da Fase 2
+        run: docker compose run --rm k6 run --quiet orders-test.js
+
+      - name: Executar o teste de carga da Fase 1
         run: docker compose run --rm k6 run --quiet load-test.js

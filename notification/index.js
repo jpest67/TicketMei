@@ -1,9 +1,26 @@
 const express = require('express');
 const amqp = require('amqplib');
 const client = require('prom-client');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const port = 8003;
+
+//create file and function to save notif - probably should bring data out of catalog in future idk
+const dataFolder = path.join(__dirname, 'data');
+fs.mkdirSync(dataFolder, { recursive: true });
+const logFile = path.join(dataFolder, 'notification_logs.json');
+if (!fs.existsSync(logFile)) {
+  fs.writeFileSync(logFile, '[]');
+}
+
+function guardarNotificacao(notificacao) {
+  const registos = JSON.parse(fs.readFileSync(logFile, 'utf8'));
+  registos.push(notificacao);
+  fs.writeFileSync(logFile, JSON.stringify(registos, null, 2));
+}
+
 
 const collectDefaultMetrics = client.collectDefaultMetrics;
 collectDefaultMetrics();
@@ -38,16 +55,25 @@ async function connectRabbitMQ() {
         const end = notificationProcessingDuration.startTimer();
         const orderData = JSON.parse(msg.content.toString());
 
+        //actually saving it
         setTimeout(() => {
-          console.log(JSON.stringify({
-            Order_id: orderData.order_id,
-            Email: orderData.email,
-            Status: "SENT"
-          }));
-          
-          notificationsProcessedTotal.inc({ status: 'SENT' });
-          end();
-          channel.ack(msg);
+          try {
+            const notificacao = {
+              Order_id: orderData.order_id,
+              Email: orderData.email,
+              Status: "SENT"
+            };
+            guardarNotificacao(notificacao);
+            console.log(JSON.stringify(notificacao));
+            notificationsProcessedTotal.inc({ status: 'SENT' });
+            channel.ack(msg);
+          } catch (error) {
+            console.error('Erro ao registar a notificação:', error.message);
+            notificationsProcessedTotal.inc({ status: 'FAILED' });
+            channel.nack(msg, false, false);
+          } finally {
+            end();
+          }
         }, 100);
       }
     });
