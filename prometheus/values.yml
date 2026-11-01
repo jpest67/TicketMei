@@ -1,0 +1,31 @@
+prometheus-node-exporter:
+  hostRootFsMount:
+    mountPropagation: None
+
+# prometheus-prometheus-node-exporter-gnlwq                0/1     CrashLoopBackOff   6 (3m29s ago)   9m14s
+
+prometheus:
+  prometheusSpec:
+    additionalScrapeConfigs:
+      - job_name: api-gateway
+        fallback_scrape_protocol: PrometheusText0.0.4
+        static_configs:
+          - targets: ['api-gateway.ticketmei.svc.cluster.local:8000']
+
+      - job_name: catalog
+        fallback_scrape_protocol: PrometheusText0.0.4
+        static_configs:
+          - targets: ['catalog.ticketmei.svc.cluster.local:8001']
+
+      - job_name: order
+        fallback_scrape_protocol: PrometheusText0.0.4
+        static_configs:
+          - targets: ['order.ticketmei.svc.cluster.local:8002']
+
+      - job_name: notification
+        static_configs:
+          - targets: ['notification.ticketmei.svc.cluster.local:8003']
+
+      - job_name: rabbitmq
+        static_configs:
+          - targets: ['rabbitmq.ticketmei.svc.cluster.local:15692']

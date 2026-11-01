@@ -20,3 +20,5 @@ export default function () {
   });
   sleep(0.1);
 }
+
+//docker compose run --rm k6 run --quiet load-test.js
