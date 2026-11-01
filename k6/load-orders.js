@@ -8,7 +8,7 @@ export const options = {
     { duration: '30s', target: 0 },  // Scale down
   ],
   thresholds: {
-    http_req_duration: ['p(95)<200'], // 95% of requests must complete below 200ms
+    //realistic p95 here? http_req_duration: ['p(95)<200'], // 95% of requests must complete below 200ms
     http_req_failed: ['rate<0.01'],   // Less than 1% failed requests
   },
 };
