@@ -25,7 +25,7 @@ jobs:
           curl --fail --retry 15 --retry-all-errors --retry-delay 2 http://localhost:8003/metrics
 
       - name: Testar a compra e a notificação da Fase 2
-        run: docker compose run --rm k6 run --quiet orders-test.js
+        run: docker compose run --rm k6 run --quiet load-orders.js #ups
 
       - name: Executar o teste de carga da Fase 1
         run: docker compose run --rm k6 run --quiet load-test.js
