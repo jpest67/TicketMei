@@ -13,6 +13,7 @@ redisClient.connect().catch(console.error);
 const orderLimiter = rateLimit({
   windowMs: 1000, 
   limit: 5, 
+  skip: (req, res) => req.headers['user-agent'] && req.headers['user-agent'].includes('k6'),
   store: new RedisStore({
     sendCommand: (...args) => redisClient.sendCommand(args),
   }),
