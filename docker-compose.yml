@@ -10,6 +10,7 @@ services:
       - "8000:8000"
     depends_on:
       - catalog
+      - redis
 
   order:
     build: ./order
@@ -68,6 +69,11 @@ services:
       - "8003:8003"
     depends_on:
       - rabbitmq
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
 
 volumes:
   order-data:
