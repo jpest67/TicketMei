@@ -1,8 +1,23 @@
 const express = require('express');
 const http = require('http');
 const prom = require('prom-client');
+const { rateLimit } = require('express-rate-limit');
+const { RedisStore } = require('rate-limit-redis');
+const { createClient } = require('redis');
 
 const app = express();
+
+const redisClient = createClient({ url: 'redis://redis:6379' });
+redisClient.connect().catch(console.error);
+
+const orderLimiter = rateLimit({
+  windowMs: 1000, 
+  limit: 5, 
+  store: new RedisStore({
+    sendCommand: (...args) => redisClient.sendCommand(args),
+  }),
+  message: 'Too Many Requests' 
+});
 
 const gatewayCounter = new prom.Counter({
   name: 'gateway_requests_total',
@@ -16,7 +31,6 @@ const gatewayDuration = new prom.Histogram({
   labelNames: ['endpoint']
 });
 
-// basically GET http://catalog:8001/events but not really
 app.get('/events', (req, res) => {
   const start = performance.now();
   res.on('finish', () => {
@@ -65,7 +79,7 @@ app.get('/events/:id', (req, res) => {
   catalogRequest.end();
 });
 
-app.post('/orders', (req, res) => {
+app.post('/orders', orderLimiter, (req, res) => {
   const start = performance.now();
   res.on('finish', () => {
     gatewayCounter.labels(req.method, '/orders', String(res.statusCode)).inc();
@@ -92,7 +106,6 @@ app.post('/orders', (req, res) => {
   req.pipe(orderRequest);
 });
 
-
 app.get('/orders/:id', (req, res) => {
   const start = performance.now();
   res.on('finish', () => {
@@ -116,7 +129,6 @@ app.get('/orders/:id', (req, res) => {
   });
   orderRequest.end();
 });
-
 
 app.get('/metrics', async (req, res) => {
   res.end(await prom.register.metrics());
