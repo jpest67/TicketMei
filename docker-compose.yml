@@ -6,6 +6,8 @@ services:
 
   api-gateway:
     build: ./api-gateway
+    environment:
+      ALLOW_K6_BYPASS: "true"
     ports:
       - "8000:8000"
     depends_on:

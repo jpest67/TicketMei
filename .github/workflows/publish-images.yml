@@ -1,0 +1,70 @@
+name: Publish Kubernetes images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api-gateway/**'
+      - 'catalog/**'
+      - 'order/**'
+      - 'notification/**'
+      - '.github/workflows/publish-images.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: publish-ticketmei-images
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build changed services and update manifests
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          for service in api-gateway catalog order notification; do
+            manifest="k8s/$service.yaml"
+            if [ "$service" = catalog ]; then
+              manifest=k8s/catalog.yml
+            fi
+            image="ghcr.io/jpest67/ticketmei-$service"
+            tag=$(sed -n "s|^[[:space:]]*image: $image:||p" "$manifest")
+            if [ -z "$tag" ]; then
+              echo "Missing image reference in $manifest"
+              exit 1
+            fi
+            if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] &&
+               git cat-file -e "$tag^{commit}" 2>/dev/null &&
+               git diff --quiet "$tag" "$sha" -- "$service/"; then
+              echo "$service unchanged"
+              continue
+            fi
+            docker build -t "$image:$sha" "$service"
+            docker push "$image:$sha"
+            sed -i "s|image: $image:.*|image: $image:$sha|" "$manifest"
+            git add "$manifest"
+          done
+
+      - name: Publish updated manifest tags
+        run: |
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update Kubernetes image tags"
+          git push origin HEAD:main
