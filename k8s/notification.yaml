@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: notification
-          image: ghcr.io/jpest67/ticketmei-notification:SHA
+          image: ghcr.io/jpest67/ticketmei-notification:38a08ef1f99fc09cb824ebc85aebbcd55fb270fe
           ports:
             - containerPort: 8003
           volumeMounts:

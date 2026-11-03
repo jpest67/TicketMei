@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: ghcr.io/jpest67/ticketmei-api-gateway:SHA #REPLACE FOR REAL IMAGE
+          image: ghcr.io/jpest67/ticketmei-api-gateway:38a08ef1f99fc09cb824ebc85aebbcd55fb270fe
           ports:
             - containerPort: 8000
 ---
