@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: notification
-        image: ghcr.io/kristof2115/ticketmei-order:latest
+        image: ghcr.io/jpest67/ticketmei-order:latest
         ports:
         - containerPort: 8003
         env:
