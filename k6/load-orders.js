@@ -1,6 +1,9 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
+const gatewayUrl = __ENV.GATEWAY_URL || 'http://api-gateway:8000';
+const respostasEsperadas = http.expectedStatuses(202, 429);
+
 export const options = {
   stages: [
     { duration: '3m', target: 500 }, // Ramp-up to 500 Virtual Users over 3 minutes
@@ -22,17 +25,29 @@ export default function () {
   };
 
   const res = http.post(
-    'http://api-gateway:8000/orders',
+    gatewayUrl + '/orders',
     JSON.stringify(dados), //convert to json so it can be snet over http
     {
       headers: { 'Content-Type': 'application/json' },
-      tags: { name: 'POST /orders' },
-    }// informs server that the data contains json and tags it for metrics requests
+      responseCallback: respostasEsperadas,
+    }
   );
 
-  check(res, {
-    'POST /orders devolve 202': r => r.status === 202,
-  });//true or false
+  if (res.status === 202) {
+    check(res, {
+      'POST /orders aceita a compra com 202': r => r.status === 202,
+    });
+    const compra = res.json();
+    const consulta = http.get(gatewayUrl + '/orders/' + compra.id);
+    check(consulta, {
+      'GET /orders/:id devolve 200': r => r.status === 200,
+    });
+  } else {
+    check(res, {
+      'POST /orders rejeita o excesso com 429': r => r.status === 429,
+    });
+  }
   sleep(0.1);
 }
-// docker compose run --rm k6 run --quiet load-orders.js
+// POST /orders e GET /orders/:id - até 500 utilizadores virtuais.
+// docker compose run --rm --no-deps k6 run -e GATEWAY_URL=http://host.docker.internal:30000 load-orders.js

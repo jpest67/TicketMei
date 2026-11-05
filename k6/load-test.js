@@ -1,6 +1,8 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
+const gatewayUrl = __ENV.GATEWAY_URL || 'http://api-gateway:8000';
+
 export const options = {
   stages: [
     { duration: '3m', target: 500 }, // Ramp-up to 500 Virtual Users over 3 minutes
@@ -14,11 +16,16 @@ export const options = {
 };
 
 export default function () {
-  const res = http.get('http://api-gateway:8000/events');
+  const res = http.get(gatewayUrl + '/events');
   check(res, {
-    'status is 200': (r) => r.status === 200,
+    'GET /events devolve 200': r => r.status === 200,
+  });
+
+  const evento = http.get(gatewayUrl + '/events/evt-101');
+  check(evento, {
+    'GET /events/:id devolve 200': r => r.status === 200,
   });
   sleep(0.1);
 }
-
+// GET /events e GET /events/:id - até 500 utilizadores virtuais.
 //docker compose run --rm k6 run --quiet load-test.js
