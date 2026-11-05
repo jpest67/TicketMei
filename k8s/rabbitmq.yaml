@@ -30,6 +30,7 @@ spec:
         ports:
         - containerPort: 5672
         - containerPort: 15672
+        - containerPort: 15692
         volumeMounts:
         - name: rabbitmq-storage
           mountPath: /var/lib/rabbitmq
@@ -51,5 +52,8 @@ spec:
   - port: 15672
     targetPort: 15672
     name: management
+  - port: 15692
+    targetPort: 15692
+    name: prometheus
   selector:
     app: rabbitmq

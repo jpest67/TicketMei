@@ -14,9 +14,12 @@ spec:
     spec:
       containers:
       - name: api-gateway
-        image: ghcr.io/jpest67/ticketmei-api-gateway:latest
+        image: ghcr.io/jpest67/ticketmei-api-gateway:38a08ef1f99fc09cb824ebc85aebbcd55fb270fe
         ports:
         - containerPort: 8000
+        env:
+        - name: REDIS_URL
+          value: "redis://redis:6379"
 ---
 apiVersion: v1
 kind: Service

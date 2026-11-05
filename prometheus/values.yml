@@ -6,6 +6,9 @@ prometheus-node-exporter:
 
 prometheus:
   prometheusSpec:
+    nodeExporter:
+      enabled: true
+      
     additionalScrapeConfigs:
       - job_name: api-gateway
         fallback_scrape_protocol: PrometheusText0.0.4
