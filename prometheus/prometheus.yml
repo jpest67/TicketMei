@@ -13,7 +13,7 @@ scrape_configs:
   - job_name: 'order'
     static_configs:
       - targets: ['order:8002']
-
+#this was missing
   - job_name: 'notification'
     static_configs:
       - targets: ['notification:8003']

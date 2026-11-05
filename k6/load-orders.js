@@ -49,5 +49,5 @@ export default function () {
   }
   sleep(0.1);
 }
-// POST /orders e GET /orders/:id - atÃ© 500 utilizadores virtuais.
+// POST /orders e GET /orders/:id - até 500 utilizadores virtuais.
 // docker compose run --rm --no-deps k6 run -e GATEWAY_URL=http://host.docker.internal:30000 load-orders.js

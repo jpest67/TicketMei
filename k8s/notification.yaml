@@ -4,6 +4,9 @@ metadata:
   name: notification
   namespace: ticketmei
 spec:
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: notification
@@ -13,13 +16,17 @@ spec:
         app: notification
     spec:
       containers:
-      - name: notification
-        image: ghcr.io/jpest67/ticketmei-notification:38a08ef1f99fc09cb824ebc85aebbcd55fb270fe
-        ports:
-        - containerPort: 8003
-        env:
-        - name: RABBITMQ_URL
-          value: "amqp://rabbitmq:5672"
+        - name: notification
+          image: ghcr.io/jpest67/ticketmei-notification:38a08ef1f99fc09cb824ebc85aebbcd55fb270fe
+          ports:
+            - containerPort: 8003
+          volumeMounts:
+            - name: data
+              mountPath: /usr/src/app/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: notification-data
 ---
 apiVersion: v1
 kind: Service
@@ -27,8 +34,20 @@ metadata:
   name: notification
   namespace: ticketmei
 spec:
-  ports:
-  - port: 8003
-    targetPort: 8003
   selector:
     app: notification
+  ports:
+    - port: 8003
+      targetPort: 8003
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: notification-data
+  namespace: ticketmei
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

@@ -4,6 +4,7 @@ metadata:
   name: api-gateway
   namespace: ticketmei
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: api-gateway
@@ -13,13 +14,10 @@ spec:
         app: api-gateway
     spec:
       containers:
-      - name: api-gateway
-        image: ghcr.io/jpest67/ticketmei-api-gateway:38a08ef1f99fc09cb824ebc85aebbcd55fb270fe
-        ports:
-        - containerPort: 8000
-        env:
-        - name: REDIS_URL
-          value: "redis://redis:6379"
+        - name: api-gateway
+          image: ghcr.io/jpest67/ticketmei-api-gateway:38a08ef1f99fc09cb824ebc85aebbcd55fb270fe
+          ports:
+            - containerPort: 8000
 ---
 apiVersion: v1
 kind: Service
@@ -27,9 +25,11 @@ metadata:
   name: api-gateway
   namespace: ticketmei
 spec:
-  type: LoadBalancer
-  ports:
-  - port: 8000
-    targetPort: 8000
+  type: NodePort
   selector:
     app: api-gateway
+  ports:
+    - name: port-8000
+      port: 8000
+      targetPort: 8000
+      nodePort: 30000
