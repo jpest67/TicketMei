@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: catalog
-          image: ghcr.io/jpest67/ticketmei-catalog:7d42a34acace67ac4000f1779d43cefdd9927e39
+          image: ghcr.io/jpest67/ticketmei-catalog:a691987221187409b41811fd475563ceb3ebab61
           ports:
             - containerPort: 8001
 ---
