@@ -29,3 +29,5 @@ export default function () {
 }
 // GET /events e GET /events/:id - até 500 utilizadores virtuais.
 // docker compose run --rm --no-deps k6 run -e GATEWAY_URL=http://host.docker.internal:30000 load-orders.js
+
+// docker compose run --rm --no-deps k6 run -e GATEWAY_URL=http://host.docker.internal:30000 --stage '10s:2,30s:2,5s:0' load-test.js
