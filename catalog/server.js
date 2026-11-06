@@ -55,5 +55,5 @@ app.get('/metrics', async (req, res) => {
 
 //receber pedidos na porta 8001 
 app.listen(8001, () => {
-  console.log('Catalog pronto a correr na porta 8001');
+  console.log('Catalog a correr na porta 8001');
 });
