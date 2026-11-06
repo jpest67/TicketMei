@@ -8,15 +8,18 @@ const { createClient } = require('redis');
 const app = express();
 
 const redisClient = createClient({ url: 'redis://redis:6379' });
-redisClient.connect().catch(console.error);
-
+redisClient.on('error', error => console.error('Redis:', error.message));
+const redisReady = redisClient.connect();
 const orderLimiter = rateLimit({
   windowMs: 1000, 
   limit: 5, 
   skip: req => process.env.ALLOW_K6_BYPASS === 'true' &&
   (req.headers['user-agent'] || '').includes('k6'),
   store: new RedisStore({
-    sendCommand: (...args) => redisClient.sendCommand(args),
+    sendCommand: async (...args) => {
+      await redisReady;
+      return redisClient.sendCommand(args);
+    },
   }),
   message: 'Too Many Requests' 
 });
@@ -136,6 +139,13 @@ app.get('/metrics', async (req, res) => {
   res.end(await prom.register.metrics());
 });
 
-app.listen(8000, () => {
-  console.log('API Gateway a correr na porta 8000');
-});
+redisReady
+  .then(() => {
+    app.listen(8000, () => {
+      console.log('API Gateway a correr na porta 8000');
+    });
+  })
+  .catch(error => {
+    console.error('Falha ao ligar ao Redis:', error);
+    process.exit(1);
+  });
