@@ -169,6 +169,31 @@ app.post('/orders', async (req, res) => {
     return res.status(500).json({ error: 'Não foi possível guardar a compra' });
   }
 
+  //call payment
+  try {
+    const resposta = await fetch('http://payment:8004/payments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        order_id: compra.id,
+        amount: compra.total_amount
+      })
+    });
+
+    if (!resposta.ok) {
+      throw new Error('Payment failed');
+    }
+  } catch {
+    db.prepare('UPDATE orders SET status = ? WHERE id = ?')
+      .run('FAILED', compra.id);
+    return res.status(502).json({ error: 'Payment failed' });
+  }
+
+  db.prepare('UPDATE orders SET status = ? WHERE id = ?')
+    .run('CONFIRMED', compra.id);
+  compra.status = 'CONFIRMED';
+
+
   //publishes order
   try {
     await publicarCompra(compra);
@@ -185,8 +210,10 @@ app.post('/orders', async (req, res) => {
       order_id: compra.id
     });
   }
+
+
   //respond to client
-  res.status(202).json(compra);
+  res.status(201).json(compra);
 });
 
 // gets values from DB
