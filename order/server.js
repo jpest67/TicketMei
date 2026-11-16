@@ -2,6 +2,7 @@ const express = require('express');
 // library used to allow order to communicate with rabbitmq through AMQP
 const amqp = require('amqplib');
 const prom = require('prom-client');
+const CircuitBreaker = require('opossum');
 //database related
 const { DatabaseSync } = require('node:sqlite');
 const { mkdirSync } = require('node:fs');
@@ -12,9 +13,27 @@ const app = express();
 //client JSON data inside request -> req.body.
 app.use(express.json());
 
+// --- PROMETHEUS METRICS FOR PHASE 1 ---
 const ordersCounter = new prom.Counter({
   name: 'orders_initiated_total',
   help: 'Compras iniciadas e transições para falha de publicação',
+  labelNames: ['status']
+});
+
+const cbStateGauge = new prom.Gauge({
+  name: 'circuit_breaker_state',
+  help: 'Circuit Breaker State: 0={Closed}, 1={Open}, 2={Half-Open}'
+});
+cbStateGauge.set(0); // initial state CLOSED
+
+const cbFallbacksTotal = new prom.Counter({
+  name: 'circuit_breaker_fallbacks_total',
+  help: 'Total number of Circuit Breaker fallbacks executed'
+});
+
+const paymentRequestsTotal = new prom.Counter({
+  name: 'payment_client_requests_total',
+  help: 'Total payment client requests',
   labelNames: ['status']
 });
 
@@ -104,7 +123,6 @@ function guardarCompra(dados, evento) {
   return compra;
 }
 
-
 //publishes purchase RabbitMQ
 async function publicarCompra(compra) {
   //connect RabbitMQ
@@ -140,6 +158,72 @@ async function publicarCompra(compra) {
   }
 }
 
+// --- PAYMENT FUNCTION FOR CIRCUIT BREAKER ---
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function makePaymentCall(compra) {
+  // Try up to 3 times (1 initial + 2 retries with jitter) before throwing error to CB
+  let attempt = 0;
+  const maxAttempts = 3;
+
+  while (attempt < maxAttempts) {
+    attempt++;
+    try {
+      const resposta = await fetch('http://payment:8004/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: compra.id,
+          amount: compra.total_amount
+        })
+      });
+
+      if (resposta.ok) {
+        paymentRequestsTotal.labels('2xx').inc();
+        return true;
+      } else {
+        paymentRequestsTotal.labels(resposta.status.toString()).inc();
+        if (resposta.status >= 500 && attempt < maxAttempts) {
+          throw new Error('RETRY_HTTP_500');
+        }
+        throw new Error('Payment failed'); 
+      }
+    } catch (erro) {
+      if (erro.message !== 'RETRY_HTTP_500') {
+         paymentRequestsTotal.labels('timeout').inc();
+      }
+      
+      if (attempt >= maxAttempts) {
+        throw erro;
+      }
+      // Jitter: random delay between 100ms and 500ms
+      const jitter = Math.floor(Math.random() * 400) + 100;
+      await sleep(jitter);
+    }
+  }
+}
+
+// --- OPOSSUM CIRCUIT BREAKER CONFIGURATION ---
+const breakerOptions = {
+  timeout: 5000, // If payment takes longer than 5s, trigger a failure
+  errorThresholdPercentage: 50, // When 50% of requests fail, open the circuit
+  resetTimeout: 10000 // After 10 seconds, try to semi-open the circuit
+};
+
+const paymentBreaker = new CircuitBreaker(makePaymentCall, breakerOptions);
+
+// Update Prometheus Gauge on state changes
+paymentBreaker.on('close', () => cbStateGauge.set(0));
+paymentBreaker.on('open', () => cbStateGauge.set(1));
+paymentBreaker.on('halfOpen', () => cbStateGauge.set(2));
+
+// Track fallbacks
+paymentBreaker.fallback((compra, error) => {
+  cbFallbacksTotal.inc();
+  // Return a specific object so we know fallback was triggered
+  return { fallback: true, message: error.message }; 
+});
+
 // validarCompra -> obterEvento -> guardarCompra -> publicarCompra -> respond to client
 app.post('/orders', async (req, res) => {
   //validation
@@ -169,30 +253,27 @@ app.post('/orders', async (req, res) => {
     return res.status(500).json({ error: 'Não foi possível guardar a compra' });
   }
 
-  //call payment
+  //call payment using Opossum Circuit Breaker
   try {
-    const resposta = await fetch('http://payment:8004/payments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        order_id: compra.id,
-        amount: compra.total_amount
-      })
-    });
-
-    if (!resposta.ok) {
-      throw new Error('Payment failed');
+    const paymentResult = await paymentBreaker.fire(compra);
+    
+    // Check if fallback was returned (meaning circuit is open or call failed)
+    if (paymentResult && paymentResult.fallback) {
+      db.prepare('UPDATE orders SET status = ? WHERE id = ?').run('FAILED', compra.id);
+      
+      // Fast failure if circuit is OPEN
+      if (paymentBreaker.opened) {
+         return res.status(503).json({ error: "Payment system unavailable, try again later" });
+      }
+      return res.status(502).json({ error: 'Payment failed' });
     }
-  } catch {
-    db.prepare('UPDATE orders SET status = ? WHERE id = ?')
-      .run('FAILED', compra.id);
+  } catch (erro) {
+    db.prepare('UPDATE orders SET status = ? WHERE id = ?').run('FAILED', compra.id);
     return res.status(502).json({ error: 'Payment failed' });
   }
 
-  db.prepare('UPDATE orders SET status = ? WHERE id = ?')
-    .run('CONFIRMED', compra.id);
+  db.prepare('UPDATE orders SET status = ? WHERE id = ?').run('CONFIRMED', compra.id);
   compra.status = 'CONFIRMED';
-
 
   //publishes order
   try {
@@ -210,7 +291,6 @@ app.post('/orders', async (req, res) => {
       order_id: compra.id
     });
   }
-
 
   //respond to client
   res.status(201).json(compra);
