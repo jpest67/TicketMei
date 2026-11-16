@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: order
-          image: ghcr.io/jpest67/ticketmei-order:0e00c27b1f518e6227ece3574d096b0cfe6e5f34
+          image: ghcr.io/jpest67/ticketmei-order:903b4f46de17f7e3244cb2e22355a9e52dd08907
           ports:
             - containerPort: 8002
           volumeMounts:
