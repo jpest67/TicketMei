@@ -293,7 +293,7 @@ app.post('/orders', async (req, res) => {
   }
 
   //respond to client
-  res.status(201).json(compra);
+  res.status(202).json(compra);
 });
 
 // gets values from DB

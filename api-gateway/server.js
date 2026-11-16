@@ -10,11 +10,10 @@ const app = express();
 const redisClient = createClient({ url: 'redis://redis:6379' });
 redisClient.on('error', error => console.error('Redis:', error.message));
 const redisReady = redisClient.connect();
+
 const orderLimiter = rateLimit({
   windowMs: 1000, 
   limit: 5, 
-  skip: req => process.env.ALLOW_K6_BYPASS === 'true' &&
-  (req.headers['user-agent'] || '').includes('k6'),
   store: new RedisStore({
     sendCommand: async (...args) => {
       await redisReady;
