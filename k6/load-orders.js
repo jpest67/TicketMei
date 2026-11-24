@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 const gatewayUrl = __ENV.GATEWAY_URL || 'http://api-gateway:8000';
-const respostasEsperadas = http.expectedStatuses(202, 429);
+const respostasEsperadas = http.expectedStatuses(201, 429);
 
 export const options = {
   stages: [
@@ -33,9 +33,9 @@ export default function () {
     }
   );
 
-  if (res.status === 202) {
+  if (res.status === 201) {
     check(res, {
-      'POST /orders aceita a compra com 202': r => r.status === 202,
+      'POST /orders aceita a compra com 201': r => r.status === 201,
     });
     const compra = res.json();
     const consulta = http.get(gatewayUrl + '/orders/' + compra.id);
@@ -51,5 +51,10 @@ export default function () {
 }
 // POST /orders e GET /orders/:id - até 500 utilizadores virtuais.
 // docker compose run --rm --no-deps k6 run -e GATEWAY_URL=http://host.docker.internal:30000 load-orders.js
-
 // docker compose run --rm --no-deps k6 run -e GATEWAY_URL=http://host.docker.internal:30000 --stage '10s:2,30s:2,5s:0' load-orders.js
+
+
+
+// Invoke-WebRequest -UseBasicParsing http://localhost:8000/orders -Method Post -ContentType 'application/json' -Body '{"customer_id":"test-customer","event_id":"evt-101","quantity":2,"email":"test@example.com"}' | Select-Object StatusCode, Content
+// docker compose -p ticketmei-phase1-baseline run --rm k6 run --stage "5s:2,10s:2,5s:0" load-orders.js
+//

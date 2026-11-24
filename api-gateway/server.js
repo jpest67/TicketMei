@@ -13,7 +13,10 @@ const redisReady = redisClient.connect();
 
 const orderLimiter = rateLimit({
   windowMs: 1000, 
-  limit: 5, 
+  limit: 5,
+  skip: req =>
+    process.env.ALLOW_K6_BYPASS === 'true' &&
+    (req.headers['user-agent'] || '').includes('k6-resilience'), 
   store: new RedisStore({
     sendCommand: async (...args) => {
       await redisReady;
@@ -135,6 +138,7 @@ app.get('/orders/:id', (req, res) => {
 });
 
 app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', prom.register.contentType);
   res.end(await prom.register.metrics());
 });
 

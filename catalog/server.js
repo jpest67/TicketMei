@@ -50,6 +50,7 @@ app.get('/events/:id', (req, res) => {
 
 //GET /metrics
 app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', prom.register.contentType);
   res.end(await prom.register.metrics());
 });
 
