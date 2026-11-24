@@ -10,15 +10,17 @@ const port = 8003;
 //create file and function to save notif - probably should bring data out of catalog in future idk
 const dataFolder = path.join(__dirname, 'data');
 fs.mkdirSync(dataFolder, { recursive: true });
-const logFile = path.join(dataFolder, 'notification_logs.json');
+const logFile = path.join(dataFolder, 'notification_logs.jsonl');
 if (!fs.existsSync(logFile)) {
-  fs.writeFileSync(logFile, '[]');
+  const oldLogFile = path.join(dataFolder, 'notification_logs.json');
+  const registos = fs.existsSync(oldLogFile)
+    ? JSON.parse(fs.readFileSync(oldLogFile, 'utf8'))
+    : [];
+  fs.writeFileSync(logFile, registos.map(registo => JSON.stringify(registo) + '\n').join(''));
 }
 
 function guardarNotificacao(notificacao) {
-  const registos = JSON.parse(fs.readFileSync(logFile, 'utf8'));
-  registos.push(notificacao);
-  fs.writeFileSync(logFile, JSON.stringify(registos, null, 2));
+  fs.appendFileSync(logFile, JSON.stringify(notificacao) + '\n');
 }
 
 
@@ -43,7 +45,7 @@ app.get('/metrics', async (req, res) => {
 
 async function connectRabbitMQ() {
   try {
-    const connection = await amqp.connect('amqp://rabbitmq:5672');
+    const connection = await amqp.connect(process.env.RABBITMQ_URL || 'amqp://rabbitmq:5672');
     const channel = await connection.createChannel();
     const queue = 'order_created';
 

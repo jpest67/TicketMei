@@ -16,6 +16,8 @@ services:
 
   order:
     build: ./order
+    environment:
+      SQLITE_WAL: "true"
     ports:
       - "8002:8002"
     volumes:
@@ -74,6 +76,8 @@ services:
       
   payment:
     build: ./payment
+    environment:
+      SQLITE_WAL: "true"
     ports:
       - "8004:8004"
 

@@ -29,6 +29,9 @@ app.get('/metrics', async (req, res) => {
 const dataFolder = join(__dirname, 'data');
 mkdirSync(dataFolder, { recursive: true });
 const db = new DatabaseSync(join(dataFolder, 'payments.db'));
+if (process.env.SQLITE_WAL === 'true') {
+  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL');
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS payments (
@@ -43,7 +46,10 @@ db.exec(`
 const findPayment = db.prepare('SELECT * FROM payments WHERE order_id = ?');
 const insertPayment = db.prepare(`
   INSERT INTO payments (order_id, amount, status, processed_at)
-  VALUES (?, ?, 'SUCCESS', ?)
+  VALUES (?, ?, ?, ?)
+  ON CONFLICT(order_id) DO UPDATE SET
+    status = excluded.status,
+    processed_at = excluded.processed_at
   RETURNING *
 `);
 
@@ -85,16 +91,13 @@ app.post('/payments', async (req, res) => {
   }
 
   const existing = findPayment.get(orderId); //if same order comes multiple times
-  if (existing) { //does this need some fail message? because you can just return what's already in...
+  if (existing && existing.status === 'SUCCESS') {
     return res.status(200).json(existing);
   }
 
-  if (Math.random() * 100 < errorRate) {
-    return res.status(500).json({ error: 'Simulated payment failure' });
-  }
-
-  const payment = insertPayment.get(orderId, amount, new Date().toISOString());
-  return res.status(201).json(payment);
+  const status = Math.random() * 100 < errorRate ? 'FAILED' : 'SUCCESS';
+  const payment = insertPayment.get(orderId, amount, status, new Date().toISOString());
+  return res.status(status === 'SUCCESS' ? 201 : 500).json(payment);
 });
 
 app.listen(8004, () => {

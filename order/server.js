@@ -41,6 +41,10 @@ const paymentRequestsTotal = new prom.Counter({
 const dataFolder = join(__dirname, 'data');
 mkdirSync(dataFolder, { recursive: true });
 const db = new DatabaseSync(join(dataFolder, 'orders.db'));
+// Enable WAL only on local storage, not the global NFS volume.
+if (process.env.SQLITE_WAL === 'true') {
+  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL');
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS orders (
@@ -123,39 +127,54 @@ function guardarCompra(dados, evento) {
   return compra;
 }
 
-//publishes purchase RabbitMQ
-async function publicarCompra(compra) {
-  //connect RabbitMQ
-  const rabbitUrl = process.env.RABBITMQ_URL || 'amqp://rabbitmq:5672';
-  const ligacao = await amqp.connect(rabbitUrl);
-  ligacao.on('error', erro => console.error('Erro na ligação ao RabbitMQ:', erro.message));
+let rabbitChannelPromise = null;
 
-  try {
-    //Open Channel -> canal
-    const canal = await ligacao.createConfirmChannel();
-    canal.on('error', erro => console.error('Erro no canal RabbitMQ:', erro.message));
+async function getRabbitChannel() {
+  if (!rabbitChannelPromise) {
+    rabbitChannelPromise = (async () => {
+      const rabbitUrl = process.env.RABBITMQ_URL || 'amqp://rabbitmq:5672';
+      const ligacao = await amqp.connect(rabbitUrl);
+      ligacao.on('error', erro => {
+        console.error('Erro na ligação ao RabbitMQ:', erro.message);
+        rabbitChannelPromise = null;
+      });
+      ligacao.on('close', () => {
+        rabbitChannelPromise = null;
+      });
 
-    //Does Queue exist -> fila
-    const fila = 'order_created';
-    await canal.assertQueue(fila, { durable: true });
+      const canal = await ligacao.createConfirmChannel();
+      canal.on('error', erro => {
+        console.error('Erro no canal RabbitMQ:', erro.message);
+        rabbitChannelPromise = null;
+      });
 
-    //message
-    const mensagem = {
-      type: 'OrderCreated',
-      order_id: compra.id,
-      email: compra.email
-    };
-    // send message
-    canal.sendToQueue(
-      fila,
-      Buffer.from(JSON.stringify(mensagem)),
-      { persistent: true }
-    );
-    // wait for confirmation from RabbitMQ
-    await canal.waitForConfirms();
-  } finally {
-    await ligacao.close();
+      const fila = 'order_created';
+      await canal.assertQueue(fila, { durable: true });
+      await canal.assertExchange('orders.exchange', 'direct', { durable: true });
+      await canal.bindQueue(fila, 'orders.exchange', 'OrderCreated');
+      return canal;
+    })().catch(err => {
+      rabbitChannelPromise = null;
+      throw err;
+    });
   }
+  return rabbitChannelPromise;
+}
+
+async function publicarCompra(compra) {
+  const canal = await getRabbitChannel();
+  const mensagem = {
+    type: 'OrderCreated',
+    order_id: compra.id,
+    email: compra.email
+  };
+  canal.publish(
+    'orders.exchange',
+    'OrderCreated',
+    Buffer.from(JSON.stringify(mensagem)),
+    { persistent: true }
+  );
+  await canal.waitForConfirms();
 }
 
 // --- PAYMENT FUNCTION FOR CIRCUIT BREAKER ---
@@ -167,10 +186,14 @@ async function makePaymentCall(compra) {
   const maxAttempts = 3;
 
   while (attempt < maxAttempts) {
+    if (paymentBreaker.opened) {          //need to stop retries
+      throw new Error('Circuit is open');
+    }
     attempt++;
     try {
       const resposta = await fetch('http://payment:8004/payments', {
         method: 'POST',
+        signal: AbortSignal.timeout(1500),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_id: compra.id,
@@ -183,17 +206,16 @@ async function makePaymentCall(compra) {
         return true;
       } else {
         paymentRequestsTotal.labels(resposta.status.toString()).inc();
-        if (resposta.status >= 500 && attempt < maxAttempts) {
-          throw new Error('RETRY_HTTP_500');
-        }
         throw new Error('Payment failed'); 
       }
     } catch (erro) {
-      if (erro.message !== 'RETRY_HTTP_500') {
+      if (erro.name === 'TimeoutError') {
          paymentRequestsTotal.labels('timeout').inc();
+      } else if (erro.message !== 'Payment failed') {
+      paymentRequestsTotal.labels('network_error').inc();
       }
-      
-      if (attempt >= maxAttempts) {
+// 500 responses were being counted as timeouts
+      if (attempt >= maxAttempts || paymentBreaker.opened) {
         throw erro;
       }
       // Jitter: random delay between 100ms and 500ms
@@ -205,7 +227,7 @@ async function makePaymentCall(compra) {
 
 // --- OPOSSUM CIRCUIT BREAKER CONFIGURATION ---
 const breakerOptions = {
-  timeout: 5000, // If payment takes longer than 5s, trigger a failure
+  timeout: false, // -- each fetch has it's own 1500 milisecond timeout
   errorThresholdPercentage: 50, // When 50% of requests fail, open the circuit
   resetTimeout: 10000 // After 10 seconds, try to semi-open the circuit
 };
@@ -260,6 +282,7 @@ app.post('/orders', async (req, res) => {
     // Check if fallback was returned (meaning circuit is open or call failed)
     if (paymentResult && paymentResult.fallback) {
       db.prepare('UPDATE orders SET status = ? WHERE id = ?').run('FAILED', compra.id);
+      ordersCounter.labels('FAILED').inc();
       
       // Fast failure if circuit is OPEN
       if (paymentBreaker.opened) {
@@ -274,6 +297,7 @@ app.post('/orders', async (req, res) => {
 
   db.prepare('UPDATE orders SET status = ? WHERE id = ?').run('CONFIRMED', compra.id);
   compra.status = 'CONFIRMED';
+  ordersCounter.labels('CONFIRMED').inc();
 
   //publishes order
   try {
@@ -293,7 +317,7 @@ app.post('/orders', async (req, res) => {
   }
 
   //respond to client
-  res.status(202).json(compra);
+  res.status(201).json(compra);
 });
 
 // gets values from DB
@@ -308,6 +332,7 @@ app.get('/orders/:id', (req, res) => {
 });
 
 app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', prom.register.contentType);
   res.end(await prom.register.metrics());
 });
 
